@@ -52,9 +52,8 @@ All credentials remain on the server; none are prefixed with `VITE_`.
 | `CLOUDINARY_API_SECRET` | Cloudinary server secret. |
 | `DATA_DIR` | Local persistent scene metadata and PNG originals/versions; defaults to `./data`. |
 | `PORT` | API/production web port; defaults to 3001. |
-| `WORKSPACE_PASSWORD` | Shared password for this single-user workspace. Mandatory with `NODE_ENV=production`; optional locally. |
 
-Cloudinary is optional for retaining originals locally, but required by the implemented edit orchestration to provide publicly reachable reference-crop URLs. For unsigned uploads, configure CLOUDINARY_CLOUD_NAME and CLOUDINARY_UPLOAD_PRESET. Without a preset, configure the cloud name, API key and API secret for signed uploads. Uploaded reference images are public Cloudinary assets; local scene files remain behind workspace authentication in production.
+Cloudinary is optional for retaining originals locally, but required by the implemented edit orchestration to provide publicly reachable reference-crop URLs. For unsigned uploads, configure CLOUDINARY_CLOUD_NAME and CLOUDINARY_UPLOAD_PRESET. Without a preset, configure the cloud name, API key and API secret for signed uploads. Uploaded reference images are public Cloudinary assets; local scene files are publicly accessible through the app for the hackathon demo.
 
 ## Architecture
 
@@ -65,7 +64,7 @@ Cloudinary is optional for retaining originals locally, but required by the impl
 - **Region processor + Sharp**: normalized image handling, context crops, rectangular selection and lossless PNG recomposition.
 - **Storage**: atomic JSON scene writes and immutable local PNG assets; optional Cloudinary copies.
 
-The app is intentionally a single private workspace, not a multi-tenant service. Use one Railway replica. Job and prepared-edit records are in memory; saved images and scene history are durable on disk. Restarting invalidates sessions and pending plans. Provider-job recovery across restarts is not implemented.
+The app is an open hackathon demo with no login, not a multi-tenant service. Use one Railway replica. Job and prepared-edit records are in memory; saved images and scene history are durable on disk. Restarting invalidates pending plans. Provider-job recovery across restarts is not implemented.
 
 ## Entity representation
 
@@ -115,12 +114,12 @@ Deployment files are provided, but no Railway deployment has been performed.
 1. Push the project to a private repository with `.env` and `data/` excluded.
 2. Create a Railway service from that repository. `railway.json` selects the Dockerfile.
 3. Attach a persistent volume at `/data` and set `DATA_DIR=/data`.
-4. Add provider variables and a strong `WORKSPACE_PASSWORD`. Ensure `ANTHROPIC_BASE_URL` targets MiniMax.
+4. Add provider variables. Ensure `ANTHROPIC_BASE_URL` targets MiniMax.
 5. Keep **one replica**. Railway supplies `PORT`; the server binds to `0.0.0.0`.
 6. Generate a Railway HTTPS domain. The health check is `/api/health`.
 7. Sign in and verify real generation, image display, analysis, four sequential edits, comparison and undo before using it for the challenge.
 
-The Docker build runs `npm ci`, builds Vite, prunes development dependencies and starts the Express server. Production refuses to start without a workspace password. Authentication uses an HttpOnly, SameSite cookie; production adds Secure. Restarting the server requires signing in again.
+The Docker build runs `npm ci`, builds Vite, prunes development dependencies and starts the Express server. The hackathon demo opens directly without a password or login. Set `FRONTEND_ORIGIN` to the exact Vercel origin when hosting the frontend separately.
 
 ## Planned challenge demonstration — not yet executed
 

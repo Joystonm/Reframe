@@ -1,18 +1,13 @@
 import './config.js';
 import express from 'express';
 import path from 'node:path';
-import {randomUUID,randomBytes,createHmac,timingSafeEqual} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {AppError} from './errors.js';
 import {initStore,dataDir,readScene,saveScene} from './store.js';
 import {boxSchema} from './regions.js';
 import {hy,cloud,generateScene,reanalyze,planEdit,applyEdit,importLayerImage,applyFilter} from './services.js';
 const app=express(),jobs=new Map(),plans=new Map(),locks=new Set();
-const secret=randomBytes(32),password=process.env.WORKSPACE_PASSWORD;
-if(process.env.NODE_ENV==='production'&&!password)throw new Error('WORKSPACE_PASSWORD is required in production.');
-const sign=v=>createHmac('sha256',secret).update(v).digest('hex');
-function equal(a,b){const x=Buffer.from(a||''),y=Buffer.from(b||'');return x.length===y.length&&timingSafeEqual(x,y);}
-function authorized(req){if(!password)return true;const cookie=req.headers.cookie?.split('; ').find(s=>s.startsWith('reframe='))?.slice(8)||'';const [expires,sig]=cookie.split('.');return Number(expires)>Date.now()&&equal(sign(expires),sig);}
 app.disable('x-powered-by');
 app.use(express.json({limit:'32kb'}));
 app.use((req,res,next)=>{
@@ -24,19 +19,6 @@ app.use((req,res,next)=>{
   next();
 });
 app.get('/api/health',(_req,res)=>res.json({ok:true}));
-app.get('/api/session',(req,res)=>res.json({authenticated:authorized(req),protected:!!password}));
-const loginAttempts=new Map();
-app.post('/api/session',(req,res)=>{
-  const ip=req.ip,attempt=loginAttempts.get(ip)||{count:0,until:Date.now()+60000};
-  if(attempt.until<Date.now()){attempt.count=0;attempt.until=Date.now()+60000;}
-  attempt.count++;loginAttempts.set(ip,attempt);
-  if(attempt.count>10)return res.status(429).json({error:'Too many sign-in attempts. Wait a minute.'});
-  if(password&&!equal(req.body.password,password))return res.status(401).json({error:'Incorrect workspace password.'});
-  const expires=String(Date.now()+86400000);
-  res.setHeader('Set-Cookie','reframe='+expires+'.'+sign(expires)+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400'+(process.env.NODE_ENV==='production'?'; Secure':''));
-  res.json({authenticated:true});
-});
-app.use(['/api','/assets'],(req,res,next)=>authorized(req)?next():res.status(401).json({error:'Sign in to this private workspace.'}));
 app.get('/api/config',(_req,res)=>res.json({hy:{ready:hy.ready,model:hy.model,reason:hy.ready?null:'Configure GMI_API_KEY to generate with Hy Image 3.5 Preview.'},minimax:!!process.env.ANTHROPIC_API_KEY,cloudinary:cloud.configured()}));
 function parse(schema,value){const r=schema.safeParse(value);if(!r.success)throw new AppError('Invalid request. Check the instruction and region bounds.');return r.data;}
 function startJob(key,run){
@@ -84,6 +66,6 @@ app.use('/assets',express.static(path.join(dataDir,'assets'),{immutable:true,max
 app.use(express.static(path.resolve('dist')));
 app.get('/{*path}',(req,res)=>{if(req.path.startsWith('/api/'))return res.status(404).json({error:'Endpoint not found.'});res.sendFile(path.resolve('dist/index.html'));});
 app.use((e,req,res,_next)=>{const status=e instanceof AppError?e.status:e.type==='entity.too.large'?413:500;res.status(status).json({error:e instanceof AppError?e.message:status===413?'Request is too large.':'The server could not complete this request.'});});
-setInterval(()=>{const now=Date.now();for(const [id,j] of jobs)if(j.status!=='running'&&now-j.createdAt>86400000)jobs.delete(id);for(const [id,p] of plans)if(p.expires<now)plans.delete(id);for(const [id,a] of loginAttempts)if(a.until<now)loginAttempts.delete(id);},60000).unref();
+setInterval(()=>{const now=Date.now();for(const [id,j] of jobs)if(j.status!=='running'&&now-j.createdAt>86400000)jobs.delete(id);for(const [id,p] of plans)if(p.expires<now)plans.delete(id);},60000).unref();
 await initStore();
 app.listen(Number(process.env.PORT)||3001,'0.0.0.0',()=>console.log('Reframe backend listening on port '+(process.env.PORT||3001)));
