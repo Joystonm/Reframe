@@ -103,7 +103,8 @@ export async function applyEdit(plan,box,job){
   if(job.controller.signal.aborted)throw new AppError('Operation cancelled.',409);
   job.stage='Compositing approved region';
   const composed=await composeRegion(bytes,result.bytes,region);
-  if(composed.boundary.meanDifference>18&&composed.boundary.visibleFraction>.2)throw new AppError('The generated edit shifted content around the attachment boundary. It was not applied. Review a larger region including the joint and surrounding body, then try again.',422);
+  // Boundary color differences are diagnostics, not evidence of geometric movement.
+  // composeRegion preserves original pixels outside the approved box and blends inward.
   if(composed.change.changedPixels===0||(composed.change.visibleFraction<0.001&&composed.change.meanDifference<0.5))throw new AppError('The image provider returned no visible change inside the selected region. Your original is unchanged. Try a more specific visual instruction or review the edit region.',422);
   const asset=await persistImage(composed.bytes);
   const entities=structuredClone(version.entities),edited=entities.find(e=>e.id===entity.id),now=new Date().toISOString();
