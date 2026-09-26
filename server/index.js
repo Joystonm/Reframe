@@ -8,13 +8,18 @@ import {initStore,dataDir,readScene,saveScene} from './store.js';
 import {boxSchema} from './regions.js';
 import {hy,cloud,generateScene,reanalyze,planEdit,applyEdit,importLayerImage,applyFilter} from './services.js';
 const app=express(),jobs=new Map(),plans=new Map(),locks=new Set();
+const frontendOrigins=new Set(['https://reframe-hygen.vercel.app']);
+if(process.env.FRONTEND_ORIGIN){
+  try{frontendOrigins.add(new URL(process.env.FRONTEND_ORIGIN.trim()).origin);}
+  catch{throw new Error('FRONTEND_ORIGIN must be a valid frontend URL.');}
+}
 app.disable('x-powered-by');
 app.use(express.json({limit:'32kb'}));
 app.use((req,res,next)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','same-origin');
   if(req.method!=='GET'&&req.headers.origin){
-    try{const origin=new URL(req.headers.origin);if(origin.host!==req.headers.host&&origin.origin!==process.env.FRONTEND_ORIGIN)throw new Error();}catch{return res.status(403).json({error:'Cross-origin request rejected.'});}
+    try{const origin=new URL(req.headers.origin);if(origin.host!==req.headers.host&&!frontendOrigins.has(origin.origin))throw new Error();}catch{return res.status(403).json({error:'Cross-origin request rejected.'});}
   }
   next();
 });
