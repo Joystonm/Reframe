@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {AppError,requireValue} from './errors.js';
 
@@ -32,11 +33,16 @@ export class HyImageProvider {
     if(typeof payload.prompt!=='string'||!payload.prompt.trim())throw new AppError('An image prompt is required.');
     const deadline=AbortSignal.timeout(180000);
     const combined=signal?AbortSignal.any([signal,deadline]):deadline;
-    let requestId;
+    const diagnosticId=randomUUID();
+    let requestId,traceId,httpStatus;
     try{
       const call=async(url,body)=>{
         const response=await fetch(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+key,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:combined});
+        httpStatus=response.status;
+        traceId=response.headers.get('x-request-id')||response.headers.get('request-id')||traceId;
         let data;try{data=await response.json();}catch{throw new AppError('GMI returned an unreadable response (HTTP '+response.status+').',502);}
+        requestId=data.request_id||requestId;
+        traceId=data.outcome?.request_id||traceId;
         if(!response.ok){
           const message=response.status===401||response.status===403?'GMI rejected this key or its model permissions.':
             response.status===402?'GMI account balance is insufficient.':
@@ -49,7 +55,7 @@ export class HyImageProvider {
       onStatus?.('Hy Image 3.5 Preview is rendering');
       // Submit once. Never retry a paid generation after a timeout.
       let result=await call(endpoint,{model:this.model,payload});
-      requestId=result.request_id;
+      requestId=result.request_id||requestId;
       while(result.status==='queued'||result.status==='processing'){
         if(!requestId)throw new AppError('GMI returned a pending request without its tracking ID.',502);
         onStatus?.(result.status==='queued'?'Hy request queued':'Hy Image 3.5 Preview is rendering');
@@ -73,7 +79,16 @@ export class HyImageProvider {
       }
       return {bytes:Buffer.concat(chunks),requestId,upstreamRequestId:result.outcome?.request_id,model:this.model,size:payload.size,createdAt:result.created_at};
     }catch(error){
-      if(error instanceof AppError)throw error;
+      console.error('[GMI diagnostic] '+JSON.stringify({
+        diagnosticId,requestId:requestId?safeReason(requestId):null,traceId:traceId?safeReason(traceId):null,
+        httpStatus,model:this.model,operation:payload.image?'edit':'generate',size:payload.size,
+        promptCharacters:payload.prompt.length,referenceCount:payload.image?.length||0,
+        error:error instanceof AppError?safeReason(error.message):'Provider transport or response processing failed.'
+      }));
+      if(error instanceof AppError){
+        const tracking=requestId||traceId;
+        throw new AppError(error.message+(tracking?' GMI request: '+safeReason(tracking)+'.':' GMI did not supply a request ID.')+' Diagnostic: '+diagnosticId+'.',error.status);
+      }
       if(signal?.aborted)throw new AppError('Stopped waiting for Hy. A submitted generation may still finish and be billed.'+(requestId?' Request: '+requestId:''),409);
       if(deadline.aborted)throw new AppError('Hy exceeded the 3-minute timeout. Do not resubmit blindly; check the request in GMI.'+(requestId?' Request: '+requestId:''),504);
       throw new AppError('Unable to complete the Hy request. Check GMI connectivity. No automatic retry was made.'+(requestId?' Request: '+requestId:''),502);
