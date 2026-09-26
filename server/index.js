@@ -19,7 +19,7 @@ app.use((req,res,next)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','same-origin');
   if(req.method!=='GET'&&req.headers.origin){
-    try{if(new URL(req.headers.origin).host!==req.headers.host)throw new Error();}catch{return res.status(403).json({error:'Cross-origin request rejected.'});}
+    try{const origin=new URL(req.headers.origin);if(origin.host!==req.headers.host&&origin.origin!==process.env.FRONTEND_ORIGIN)throw new Error();}catch{return res.status(403).json({error:'Cross-origin request rejected.'});}
   }
   next();
 });
