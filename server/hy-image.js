@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import sharp from 'sharp';
 import {setTimeout as delay} from 'node:timers/promises';
 import {AppError,requireValue} from './errors.js';
 
@@ -18,6 +19,29 @@ function safeReason(value){
   }
   return text.slice(0,500);
 }
+// Check the public upload before submitting a paid edit. Do not send the GMI key.
+export async function validateEditReference(referenceUrl,signal){
+  let url;
+  try{url=new URL(referenceUrl);}catch{throw new AppError('The edit reference URL is invalid.',502);}
+  if(url.protocol!=='https:'||url.username||url.password)throw new AppError('The edit reference must use a public HTTPS URL.',502);
+  const timeout=AbortSignal.timeout(30000),combined=signal?AbortSignal.any([signal,timeout]):timeout;
+  try{
+    const response=await fetch(url,{signal:combined});
+    if(!response.ok){await response.body?.cancel();throw new AppError('The edit reference image is not publicly accessible (HTTP '+response.status+'). Check Cloudinary delivery permissions. No GMI edit was submitted.',502);}
+    const limit=20*1024*1024;
+    if(Number(response.headers.get('content-length'))>=limit){await response.body?.cancel();throw new AppError('The edit reference must be smaller than 20 MB. No GMI edit was submitted.',502);}
+    const chunks=[];let total=0;
+    for await(const chunk of response.body){total+=chunk.byteLength;if(total>=limit)throw new AppError('The edit reference must be smaller than 20 MB. No GMI edit was submitted.',502);chunks.push(chunk);}
+    let metadata;
+    try{metadata=await sharp(Buffer.concat(chunks),{limitInputPixels:20000000}).metadata();}catch{throw new AppError('The reference URL did not return a valid image. Check Cloudinary delivery settings. No GMI edit was submitted.',502);}
+    if(!['png','jpeg','webp'].includes(metadata.format)||!metadata.width||!metadata.height)throw new AppError('The edit reference must be a PNG, JPEG or WebP image. No GMI edit was submitted.',502);
+    return {bytes:total,width:metadata.width,height:metadata.height,format:metadata.format};
+  }catch(error){
+    if(error instanceof AppError)throw error;
+    if(signal?.aborted)throw new AppError('Operation cancelled before submitting the GMI edit.',409);
+    throw new AppError('The edit reference image could not be downloaded. Check Cloudinary delivery and try again. No GMI edit was submitted.',502);
+  }
+}
 export class HyImageProvider {
   model='hy-image-v3.5-preview';
   get ready(){return !!process.env.GMI_API_KEY;}
@@ -26,6 +50,8 @@ export class HyImageProvider {
   }
   async edit({prompt,referenceUrl,width,height,signal,onStatus}={}){
     if(!referenceUrl)throw new AppError('The edit needs a publicly reachable reference image.',400);
+    onStatus?.('Checking the edit reference image');
+    await validateEditReference(referenceUrl,signal);
     return this.request({prompt,image:[referenceUrl],size:closestSize(width||1,height||1)},signal,onStatus);
   }
   async request(payload,signal,onStatus){

@@ -2,7 +2,7 @@ import {mkdir,readFile,writeFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {AppError} from './errors.js';
-export const dataDir=path.resolve(process.env.DATA_DIR||'./data');
+export const dataDir=path.resolve(process.env.DATA_DIR||process.env.RAILWAY_VOLUME_MOUNT_PATH||'./data');
 export async function initStore(){await mkdir(path.join(dataDir,'assets'),{recursive:true});}
 export async function readScene(id){
   if(!/^[a-f0-9-]{36}$/.test(id))throw new AppError('Scene not found.',404);
