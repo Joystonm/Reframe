@@ -6,93 +6,64 @@ When we generate an image with AI, the result is usually one flattened image. If
 
 Reframe changes that. Reframe is an AI creative workspace that turns generated images into editable scenes.
 
-## What you can do
+## Features
 
-- Generate scenes with Hy Image 3.5 Preview through GMI Cloud.
-- Add PNG, JPEG, or WebP images as editable Canvas layers.
-- Inspect objects with names, descriptions, depth, relationships, and approximate regions.
-- Review localized edits before rendering and protect pixels outside the approved rectangle.
-- Edit one image layer while leaving other Canvas layers untouched.
-- Compare original and current versions with a slider.
-- Explore a spatial Scene map for crowded compositions.
-- Use text, shape, component, move, scale, arrange, opacity, rotation, and filter tools.
-- Restore versions, undo changes, and export the composed Canvas as PNG.
+- **Scene generation** with Hy Image 3.5 Preview through GMI Cloud.
+- **Object-level editing** with natural-language instructions and a preview of the affected region.
+- **Canvas tools** for image layers, text, shapes, layout, and filters.
+- **Inspect and Scene map** to explore detected objects and their positions.
+- **Compare and version history** to review changes, undo edits, and restore earlier versions.
+- **PNG export** of the composed canvas.
 
-## Product flow
+## How it works
 
-1. **Create** — Start with a prompt or upload an image.
-2. **Understand** — Analyze the scene and assign persistent entity IDs.
-3. **Select** — Choose an object from the layer column, artwork, or Scene map.
-4. **Reframe** — Describe the change, review its region, and apply it.
-5. **Verify** — Use Inspect and Compare to check the result.
-6. **Store** — Keep the original, edit history, entity snapshot, and versions together.
+Generate an image, analyze the scene, and select an object. Describe your change, review the edit region, and apply it. Compare the result with the original or return to a saved version.
 
-## Architecture
+Reframe uses approximate object regions. Localized edits are composited back into the approved rectangle, preserving pixels outside it.
 
-| Area | Implementation |
+## Tech stack
+
+| Layer | Technology |
 | --- | --- |
-| Client | React 19 + Vite canvas editor |
-| API | Express 5 with validated inputs, provider orchestration, jobs, and scene routes |
-| Understanding | MiniMax M3 through the Anthropic SDK interface |
-| Generation/editing | Hy Image 3.5 Preview adapter through GMI Cloud |
-| Processing | Sharp for normalization, crops, and rectangular recomposition |
-| Storage | Atomic JSON metadata and immutable local PNG versions; optional Cloudinary copies |
+| Frontend | React 19, Vite |
+| Backend | Node.js, Express 5 |
+| Image generation and editing | Hy Image 3.5 Preview via GMI Cloud |
+| Scene understanding | MiniMax M3 |
+| Image processing and storage | Sharp, local files, Cloudinary |
 
-The localized edit pipeline sends a crop with reference context to the image provider, then copies only the approved rectangle back into the stored original. Entity regions are approximate rectangles, not segmentation masks.
-
-## Run locally
+## Getting started
 
 Requires Node.js 22.16+ and npm.
 
 ```powershell
 npm install
 Copy-Item .env.example .env
-# Add server-side provider values to .env
-npm run dev
 ```
 
-Open http://127.0.0.1:5173. The Vite client runs on port 5173 and the API on port 3001.
-
-```powershell
-npm run check   # server syntax checks
-npm run build   # production client build
-npm start       # built client and API together
-```
-
-## Configuration
-
-Keep credentials on the server. Never prefix secrets with `VITE_` or commit `.env`.
+Add your provider credentials to `.env`:
 
 | Variable | Purpose |
 | --- | --- |
-| `GMI_API_KEY` | Hy Image credential |
-| `ANTHROPIC_BASE_URL` | `https://api.minimax.io/anthropic` for MiniMax |
-| `ANTHROPIC_API_KEY` | MiniMax M3 credential |
-| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud for reference crops |
-| `CLOUDINARY_UPLOAD_PRESET` | Unsigned upload preset, commonly `reframe` |
-| `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Signed upload credentials when needed |
-| `DATA_DIR` | Persistent scene and PNG storage; defaults to `./data` |
-| `PORT` | Server port; defaults to `3001` |
+| `GMI_API_KEY` | Image generation and editing |
+| `ANTHROPIC_API_KEY` | MiniMax scene analysis and edit planning |
+| `ANTHROPIC_BASE_URL` | Set to `https://api.minimax.io/anthropic` |
+| `CLOUDINARY_CLOUD_NAME` | Public reference images for edits |
+| `CLOUDINARY_UPLOAD_PRESET` | Unsigned upload preset; alternatively use `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` for signed uploads |
 
-Generation requires Hy configuration. Analysis and edit planning require MiniMax. Cloudinary is required when edit orchestration needs a public reference crop URL.
+Keep credentials server-side and do not commit `.env`.
 
-## Data and versioning
+```powershell
+npm run dev
+```
 
-Each entity receives a persistent UUID. Versions record the rendered image, entity snapshot, instruction, region, parent version, and provider provenance. Removing an entity marks it removed so its history remains available. Restoring an older version preserves the other saved versions; a later edit creates a new branch.
+Open http://127.0.0.1:5173. The API runs on port 3001.
 
-## Reliability boundaries
-
-Reframe validates model output, edit boxes, instructions, provider responses, and stale plans. It preserves the previous scene when an edit or upload fails and reports safe user-facing errors.
-
-This is an open hackathon demo without authentication or multi-tenant isolation. Job records are in memory; saved scenes and PNG files are durable on disk. Use one Railway replica. The Hy adapter is strict about its external contract and does not simulate unavailable generation results.
+| Command | Purpose |
+| --- | --- |
+| `npm run check` | Check backend syntax |
+| `npm run build` | Build the frontend |
+| `npm start` | Serve the built frontend and API |
 
 ## Deployment
 
-The repository includes `Dockerfile` and `railway.json` for Railway.
-
-1. Push without `.env` or private `data/` files.
-2. Create a Railway service and attach a persistent volume at `/data`.
-3. Set `DATA_DIR=/data` and provider variables.
-4. Keep one replica and expose the HTTPS domain.
-5. Verify `/api/health`, generation, analysis, localized edits, Compare, restore, and export with real credentials.
-
+Railway configuration is included. Set the provider variables, attach a persistent volume at `/data`, and set `DATA_DIR=/data`. Run one replica: scenes and images persist on disk, while jobs run in memory. The demo does not include authentication or multi-user isolation.
