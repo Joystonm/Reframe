@@ -29,7 +29,6 @@ Reframe uses approximate object regions. Localized edits are composited back int
 | Backend | Node.js, Express 5 |
 | Image generation and editing | Hy Image 3.5 Preview via GMI Cloud |
 | Scene understanding | MiniMax M3 |
-| Image processing and storage | Sharp, local files, Cloudinary |
 
 ## Getting started
 
@@ -41,15 +40,6 @@ Copy-Item .env.example .env
 ```
 
 Add your provider credentials to `.env`:
-
-| Variable | Purpose |
-| --- | --- |
-| `GMI_API_KEY` | Image generation and editing |
-| `ANTHROPIC_API_KEY` | MiniMax scene analysis and edit planning |
-| `ANTHROPIC_BASE_URL` | Set to `https://api.minimax.io/anthropic` |
-| `CLOUDINARY_CLOUD_NAME` | Public reference images for edits |
-| `CLOUDINARY_UPLOAD_PRESET` | Unsigned upload preset; alternatively use `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` for signed uploads |
-
 Keep credentials server-side and do not commit `.env`.
 
 ```powershell
